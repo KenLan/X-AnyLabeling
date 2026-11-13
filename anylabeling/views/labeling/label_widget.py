@@ -253,7 +253,14 @@ class LabelingWidget(LabelDialog):
         self.label_loop_popup = None
         self.select_loop_count = -1
         self.digit_to_label = None
-        self.drawing_digit_shortcuts = self._config.get("digit_shortcuts", {})
+        # 快捷标注键统一用字符串键（"0"-"9" 与字母键如 "z"）；
+        # YAML 中数字键会被解析成 int，这里做一次归一化。
+        self.drawing_digit_shortcuts = {
+            str(key): value
+            for key, value in (
+                self._config.get("digit_shortcuts") or {}
+            ).items()
+        }
         self._runtime_shape_color_shift = int(
             self._config.get("shift_auto_shape_color", 0)
         )
@@ -1048,6 +1055,13 @@ class LabelingWidget(LabelDialog):
             self.tr("Digit Shortcut 9"),
             lambda: self.create_digit_mode(9),
             "9",
+            None,
+            enabled=False,
+        )
+        digit_shortcut_z = action(
+            self.tr("Digit Shortcut Z"),
+            lambda: self.create_digit_mode("z"),
+            "Z",
             None,
             enabled=False,
         )
@@ -2033,6 +2047,7 @@ class LabelingWidget(LabelDialog):
             digit_shortcut_7=digit_shortcut_7,
             digit_shortcut_8=digit_shortcut_8,
             digit_shortcut_9=digit_shortcut_9,
+            digit_shortcut_z=digit_shortcut_z,
             upload_image_flags_file=upload_image_flags_file,
             upload_label_flags_file=upload_label_flags_file,
             upload_shape_attrs_file=upload_shape_attrs_file,
@@ -3520,6 +3535,7 @@ class LabelingWidget(LabelDialog):
         self.actions.digit_shortcut_7.setEnabled(True)
         self.actions.digit_shortcut_8.setEnabled(True)
         self.actions.digit_shortcut_9.setEnabled(True)
+        self.actions.digit_shortcut_z.setEnabled(True)
 
         self.update_progress_title()
 
@@ -4263,7 +4279,7 @@ class LabelingWidget(LabelDialog):
         if self.drawing_digit_shortcuts is None:
             return
 
-        data = self.drawing_digit_shortcuts.get(digit_num, None)
+        data = self.drawing_digit_shortcuts.get(str(digit_num), None)
         if not data:
             return
 

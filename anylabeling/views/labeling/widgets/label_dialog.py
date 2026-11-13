@@ -66,6 +66,11 @@ class ColoredComboBox(QtWidgets.QComboBox):
         event.ignore()
 
 
+# 快捷标注键：数字 0-9 + 字母键（定制扩展）。
+# 新增字母键时须避开已被占用的单键快捷键：A D P R O T G U S W。
+QUICK_DRAW_KEYS = [str(digit) for digit in range(10)] + ["z"]
+
+
 class DigitShortcutDialog(QtWidgets.QDialog):
     """Dialog for managing digit shortcuts"""
 
@@ -84,7 +89,10 @@ class DigitShortcutDialog(QtWidgets.QDialog):
             hasattr(self.parent, "drawing_digit_shortcuts")
             and self.parent.drawing_digit_shortcuts is not None
         ):
-            self.digit_shortcuts = self.parent.drawing_digit_shortcuts.copy()
+            self.digit_shortcuts = {
+                str(key): value
+                for key, value in self.parent.drawing_digit_shortcuts.items()
+            }
 
         self.available_modes = Shape.get_supported_shape()
 
@@ -105,7 +113,7 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
         # Header label
         header_label = QtWidgets.QLabel(
-            self.tr("Configure digit keys (0-9) for quick shape creation:")
+            self.tr("Configure keys (0-9, Z) for quick shape creation:")
         )
         header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(header_label)
@@ -113,9 +121,9 @@ class DigitShortcutDialog(QtWidgets.QDialog):
         # Create table for digit shortcuts
         self.table = QtWidgets.QTableWidget()
         self.table.setColumnCount(3)
-        self.table.setRowCount(10)  # 0-9 digits
+        self.table.setRowCount(len(QUICK_DRAW_KEYS))
         self.table.setHorizontalHeaderLabels(
-            [self.tr("Digit"), self.tr("Drawing Mode"), self.tr("Label")]
+            [self.tr("Key"), self.tr("Drawing Mode"), self.tr("Label")]
         )
         self.table.setSelectionMode(
             QtWidgets.QAbstractItemView.SelectionMode.NoSelection
@@ -136,11 +144,11 @@ class DigitShortcutDialog(QtWidgets.QDialog):
         )
 
         # Populate table
-        for digit in range(10):
-            # Digit column
-            digit_item = QtWidgets.QTableWidgetItem(str(digit))
-            digit_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(digit, 0, digit_item)
+        for row, key in enumerate(QUICK_DRAW_KEYS):
+            # Key column（字母键显示大写）
+            key_item = QtWidgets.QTableWidgetItem(key.upper())
+            key_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 0, key_item)
 
             # Mode combobox column
             mode_combo = ColoredComboBox()
@@ -150,17 +158,17 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
             # Set current mode if exists
             if (
-                int(digit) in self.digit_shortcuts
-                and "mode" in self.digit_shortcuts[int(digit)]
+                key in self.digit_shortcuts
+                and "mode" in self.digit_shortcuts[key]
             ):
-                mode = self.digit_shortcuts[int(digit)]["mode"]
+                mode = self.digit_shortcuts[key]["mode"]
                 index = mode_combo.findData(mode)
                 if index >= 0:
                     mode_combo.setCurrentIndex(index)
 
             # Connect mode change to enable/disable label field
             mode_combo.currentIndexChanged.connect(
-                lambda idx, d=digit: self.on_mode_changed(d, idx)
+                lambda idx, d=row: self.on_mode_changed(d, idx)
             )
             mode_combo.setFixedHeight(30)
             combo_container = QtWidgets.QWidget()
@@ -168,20 +176,20 @@ class DigitShortcutDialog(QtWidgets.QDialog):
             combo_layout.setContentsMargins(6, 0, 6, 0)
             combo_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
             combo_layout.addWidget(mode_combo)
-            self.table.setCellWidget(digit, 1, combo_container)
+            self.table.setCellWidget(row, 1, combo_container)
 
             label_edit = QtWidgets.QLineEdit()
             label_edit.setFixedHeight(30)
             if (
-                int(digit) in self.digit_shortcuts
-                and "label" in self.digit_shortcuts[int(digit)]
+                key in self.digit_shortcuts
+                and "label" in self.digit_shortcuts[key]
             ):
-                label_edit.setText(self.digit_shortcuts[int(digit)]["label"])
+                label_edit.setText(self.digit_shortcuts[key]["label"])
 
             if (
-                int(digit) not in self.digit_shortcuts
-                or "mode" not in self.digit_shortcuts[int(digit)]
-                or self.digit_shortcuts[int(digit)]["mode"] is None
+                key not in self.digit_shortcuts
+                or "mode" not in self.digit_shortcuts[key]
+                or self.digit_shortcuts[key]["mode"] is None
             ):
                 label_edit.setEnabled(False)
 
@@ -190,7 +198,7 @@ class DigitShortcutDialog(QtWidgets.QDialog):
             label_layout.setContentsMargins(6, 0, 6, 0)
             label_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
             label_layout.addWidget(label_edit)
-            self.table.setCellWidget(digit, 2, label_container)
+            self.table.setCellWidget(row, 2, label_container)
 
         layout.addWidget(self.table)
 
@@ -265,11 +273,11 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
         # Only proceed if user confirmed
         if confirm == QtWidgets.QMessageBox.StandardButton.Yes:
-            for digit in range(10):
-                mode_combo = self._get_combo(digit)
+            for row in range(len(QUICK_DRAW_KEYS)):
+                mode_combo = self._get_combo(row)
                 mode_combo.setCurrentIndex(0)  # "None" option
 
-                label_edit = self._get_label_edit(digit)
+                label_edit = self._get_label_edit(row)
                 label_edit.clear()
                 label_edit.setEnabled(False)
 
@@ -279,13 +287,13 @@ class DigitShortcutDialog(QtWidgets.QDialog):
         has_error = False
 
         # Reset all error styling
-        for digit in range(10):
-            label_edit = self._get_label_edit(digit)
+        for row in range(len(QUICK_DRAW_KEYS)):
+            label_edit = self._get_label_edit(row)
             label_edit.setStyleSheet("")
 
-        for digit in range(10):
-            mode_combo = self._get_combo(digit)
-            label_edit = self._get_label_edit(digit)
+        for row, key in enumerate(QUICK_DRAW_KEYS):
+            mode_combo = self._get_combo(row)
+            label_edit = self._get_label_edit(row)
 
             mode = mode_combo.currentData()
             label = label_edit.text().strip()
@@ -298,7 +306,7 @@ class DigitShortcutDialog(QtWidgets.QDialog):
                 label_edit.setStyleSheet(f"border: 2px solid {t['error']};")
 
             if mode is not None and label:
-                result[int(digit)] = {"mode": mode, "label": label}
+                result[key] = {"mode": mode, "label": label}
 
         if has_error:
             QtWidgets.QMessageBox.warning(
