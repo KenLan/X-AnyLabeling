@@ -1,6 +1,7 @@
 # -*- mode: python -*-
 # vim: ft=python
 
+import glob
 import importlib.util
 import os
 import re
@@ -102,6 +103,35 @@ def _collect_onnxruntime_dlls():
         + [(dll, '.') for dll in root_copy_dlls]
     )
 
+def _collect_nvidia_cuda_dlls():
+    """Bundle CUDA/cuDNN DLLs shipped by the pip ``nvidia-*-cu12`` wheels.
+
+    ONNX Runtime GPU resolves its CUDA 12 dependencies from these wheels when
+    no system-wide CUDA toolkit is installed. The stock PyInstaller hooks only
+    pick up the primary DLL of each wheel (e.g. the 0.3 MB cuDNN loader
+    without its sub-libraries), so collect every DLL instead and copy them
+    flat next to the payload; the ort_dll_bootstrap runtime hook already adds
+    that directory to the DLL search path.
+    """
+    nvidia_spec = importlib.util.find_spec('nvidia')
+    if nvidia_spec is None or not nvidia_spec.submodule_search_locations:
+        return []
+
+    site_packages = os.path.dirname(
+        next(iter(nvidia_spec.submodule_search_locations))
+    )
+    binaries = []
+    for dll_path in sorted(
+        glob.glob(os.path.join(site_packages, 'nvidia', '*', 'bin', '*.dll'))
+    ):
+        binaries.append((dll_path, '.'))
+    if binaries:
+        print(
+            "PyInstaller spec: bundled NVIDIA CUDA DLLs:",
+            len(binaries), "files",
+        )
+    return binaries
+
 def _collect_msvc_runtime_dlls():
     system_root = os.environ.get('SystemRoot') or os.environ.get('WINDIR')
     candidate_dirs = []
@@ -160,15 +190,39 @@ def _strip_msvc_runtime_binaries(binaries):
         )
     return kept
 
+def _strip_nvidia_package_binaries(binaries):
+    """Drop the incomplete ``nvidia/<pkg>/bin`` hook copies.
+
+    The flat root copies from _collect_nvidia_cuda_dlls replace them, so the
+    partial hook-collected duplicates only bloat the bundle.
+    """
+    kept = []
+    removed = 0
+    for entry in binaries:
+        dest = ''
+        if isinstance(entry, (tuple, list)) and entry and isinstance(entry[0], str):
+            dest = entry[0]
+        if dest.replace('\\', '/').startswith('nvidia/'):
+            removed += 1
+            continue
+        kept.append(entry)
+    if removed:
+        print(
+            "PyInstaller spec: excluded duplicate NVIDIA package DLLs:",
+            removed, "files",
+        )
+    return kept
+
 _add_conda_dll_search_path()
 onnxruntime_binaries = _collect_onnxruntime_dlls()
+nvidia_cuda_binaries = _collect_nvidia_cuda_dlls()
 msvc_runtime_binaries = _collect_msvc_runtime_dlls()
 matplotlib_datas = collect_data_files('matplotlib')
 
 a = Analysis(
     [_p('anylabeling', 'app.py')],
     pathex=[_p('anylabeling')],
-    binaries=onnxruntime_binaries,
+    binaries=onnxruntime_binaries + nvidia_cuda_binaries,
     datas=[
         (_p('anylabeling', 'services', 'auto_labeling', 'osam', 'clip', 'bpe_simple_vocab_16e6.txt.gz'), 'anylabeling/services/auto_labeling/osam/clip'),
         (_p('anylabeling', 'configs', 'auto_labeling', '*.yaml'), 'anylabeling/configs/auto_labeling'),
@@ -191,6 +245,7 @@ a = Analysis(
     excludes=[],
 )
 a.binaries = _strip_msvc_runtime_binaries(a.binaries)
+a.binaries = _strip_nvidia_package_binaries(a.binaries)
 if msvc_runtime_binaries:
     a.binaries += _to_binary_toc_entries(msvc_runtime_binaries)
 pyz = PYZ(a.pure, a.zipped_data)
