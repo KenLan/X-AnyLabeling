@@ -147,6 +147,17 @@ dmypy.json
 # datasets and projects
 /datasets
 data
+
+# X-AnyLabeling cloud config customization
+# 源码运行时同步到仓库根的本地配置副本（运行时产物）
+config.xanylabelingrc
+config.xanylabelingrc.tmp
+# OSS 凭据（仅本地存在，严禁提交；GitHub Push Protection 也会拦截）
+.oss_rw.env
+oss_ro.env
+
+# ZCode 会话目录
+.zcode/
 runs/
 wandb/
 zipped_models/

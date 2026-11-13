@@ -219,6 +219,19 @@ nvidia_cuda_binaries = _collect_nvidia_cuda_dlls()
 msvc_runtime_binaries = _collect_msvc_runtime_dlls()
 matplotlib_datas = collect_data_files('matplotlib')
 
+# 云端配置只读凭据：构建时从仓库根注入 exe（本地 gitignored 文件，
+# 严禁进入源码库；缺失时给出提示并跳过，程序仍可运行但无法云同步）。
+oss_ro_env_path = _p('oss_ro.env')
+oss_ro_env_datas = []
+if os.path.isfile(oss_ro_env_path):
+    oss_ro_env_datas.append((oss_ro_env_path, '.'))
+    print("PyInstaller spec: bundled OSS read-only credentials (oss_ro.env)")
+else:
+    print(
+        "PyInstaller spec: WARNING - oss_ro.env not found;"
+        " the exe will not be able to sync cloud config"
+    )
+
 a = Analysis(
     [_p('anylabeling', 'app.py')],
     pathex=[_p('anylabeling')],
@@ -233,12 +246,15 @@ a = Analysis(
         (_p('anylabeling', 'services', 'auto_labeling', 'configs', 'clip', '*'), 'anylabeling/services/auto_labeling/configs/clip'),
         (_p('anylabeling', 'services', 'auto_labeling', 'configs', 'ppocr', '*'), 'anylabeling/services/auto_labeling/configs/ppocr'),
         (_p('anylabeling', 'services', 'auto_labeling', 'configs', 'ram', '*'), 'anylabeling/services/auto_labeling/configs/ram')
-    ] + matplotlib_datas,
+    ] + oss_ro_env_datas + matplotlib_datas,
     hiddenimports=[
         'matplotlib',
         'matplotlib.backends.backend_agg',
         'matplotlib.font_manager',
         'matplotlib.mathtext',
+        # OSS 云端配置同步（无官方 PyInstaller hook，需手动收集）
+        'oss2',
+        'crcmod',
     ],
     hookspath=[],
     runtime_hooks=[_p('packaging', 'pyinstaller', 'runtime_hooks', 'ort_dll_bootstrap.py')],

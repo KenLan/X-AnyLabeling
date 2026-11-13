@@ -1,6 +1,6 @@
 import os
 import os.path as osp
-import shutil
+import sys
 import copy
 import yaml
 import importlib.resources as pkg_resources
@@ -10,6 +10,8 @@ from anylabeling.views.labeling.logger import logger
 
 current_config_file = None
 _work_directory = None
+_program_directory = None
+CONFIG_FILE_NAME = "config.xanylabelingrc"
 _LEGACY_KEY_MAP = {
     "epsilon": "canvas.epsilon",
     "show_cross_line": "canvas.crosshair.show",
@@ -38,6 +40,47 @@ def get_work_directory() -> str:
     if _work_directory is None:
         return osp.expanduser("~")
     return _work_directory
+
+
+def set_program_dir(directory: str) -> None:
+    """
+    Sets the program directory that stores the config file.
+
+    Mainly for tests. In production the directory is auto-detected.
+
+    Args:
+        directory (str): The path to the program directory.
+    """
+    global _program_directory
+    _program_directory = osp.abspath(osp.expanduser(directory))
+
+
+def get_program_dir() -> str:
+    """
+    Gets the program directory that stores the config file.
+
+    Frozen (PyInstaller) builds use the directory of the executable;
+    source runs use the repository root (the parent of the ``anylabeling``
+    package).
+
+    Returns:
+        str: The absolute path to the program directory.
+    """
+    if _program_directory is not None:
+        return _program_directory
+    if getattr(sys, "frozen", False):
+        return osp.dirname(sys.executable)
+    return osp.dirname(osp.dirname(osp.abspath(__file__)))
+
+
+def get_program_config_path() -> str:
+    """
+    Gets the path of the local config file in the program directory.
+
+    Returns:
+        str: The absolute path to the config file.
+    """
+    return osp.join(get_program_dir(), CONFIG_FILE_NAME)
 
 
 def update_dict(target_dict, new_dict, validate_item=None):
@@ -129,7 +172,7 @@ def normalize_user_config(config):
 
 
 def save_config(config):
-    user_config_file = osp.join(get_work_directory(), ".xanylabelingrc")
+    user_config_file = get_program_config_path()
     try:
         os.makedirs(osp.dirname(user_config_file), exist_ok=True)
         with open(user_config_file, "w", encoding="utf-8") as f:
@@ -139,12 +182,6 @@ def save_config(config):
 
 
 def get_default_config():
-    work_dir = get_work_directory()
-    old_cfg_file = osp.join(work_dir, ".anylabelingrc")
-    new_cfg_file = osp.join(work_dir, ".xanylabelingrc")
-    if osp.exists(old_cfg_file) and not osp.exists(new_cfg_file):
-        shutil.copyfile(old_cfg_file, new_cfg_file)
-
     config_file = "xanylabeling_config.yaml"
     with (
         pkg_resources.files(anylabeling_configs)
@@ -153,7 +190,8 @@ def get_default_config():
     ):
         config = yaml.safe_load(f)
 
-    if not osp.exists(osp.join(work_dir, ".xanylabelingrc")):
+    # 本地副本不存在时写入默认值（云端同步失败时的兜底基线）
+    if not osp.exists(get_program_config_path()):
         save_config(config)
 
     return config

@@ -32,9 +32,10 @@ from anylabeling.app_info import (
 from anylabeling.config import (
     get_config,
     set_work_directory,
-    get_work_directory,
+    get_program_config_path,
 )
 from anylabeling import config as anylabeling_config
+from anylabeling.services.cloud_config import sync_config
 
 
 def is_wsl_environment():
@@ -253,7 +254,7 @@ def main():
     parser.add_argument(
         "--work-dir",
         type=str,
-        help="working directory for configuration and data files",
+        help="working directory for model data files (xanylabeling_data)",
         default=os.path.expanduser("~"),
     )
     args = parser.parse_args()
@@ -266,9 +267,7 @@ def main():
             "anylabeling.views.common.checks", fromlist=["run_checks"]
         ).run_checks(),
         "version": lambda args: print(__version__),
-        "config": lambda args: print(
-            os.path.join(get_work_directory(), ".xanylabelingrc")
-        ),
+        "config": lambda args: print(get_program_config_path()),
         "convert": lambda args: __import__(
             "anylabeling.views.common.converter",
             fromlist=["handle_convert_command"],
@@ -336,15 +335,16 @@ def main():
     filename = config_from_args.pop("filename")
     output = config_from_args.pop("output")
     config_file_or_yaml = config_from_args.pop("config")
-    if config_file_or_yaml is None:
-        config_file_or_yaml = os.path.join(
-            get_work_directory(), ".xanylabelingrc"
-        )
     logger_level = config_from_args.pop("logger_level")
     no_auto_update_check = config_from_args.pop("no_auto_update_check", False)
     qt_platform = config_from_args.pop("qt_platform", None)
 
     logger.setLevel(getattr(logging, logger_level.upper()))
+
+    if config_file_or_yaml is None:
+        # 云端同步：OSS 权威配置 → 程序目录本地副本（失败则沿用本地副本）
+        sync_config()
+        config_file_or_yaml = get_program_config_path()
     for banner_line in build_startup_banner(format_color).splitlines():
         logger.info(banner_line)
     if qt_platform:
@@ -366,7 +366,7 @@ def main():
         logger.error(
             "--labels must be specified with --validatelabel or "
             "validate_label: exact in the config file "
-            "(ex. ~/.xanylabelingrc)."
+            "(ex. config.xanylabelingrc in the program directory)."
         )
         sys.exit(1)
 

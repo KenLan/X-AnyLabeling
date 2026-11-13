@@ -47,8 +47,9 @@ class TestPointCloudIntegration(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as directory:
                 config.set_work_directory(directory)
+                config.set_program_dir(directory)
                 config.current_config_file = str(
-                    Path(directory) / '.xanylabelingrc'
+                    Path(directory) / 'config.xanylabelingrc'
                 )
                 QtCore.QSettings.setDefaultFormat(
                     QtCore.QSettings.Format.IniFormat
